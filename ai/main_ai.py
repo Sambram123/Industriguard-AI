@@ -21,18 +21,6 @@ from safety_status  import SafetyStatus
 from excel_reporter import ExcelReporter
 from reporter       import Reporter
 
-# ── Configuration ──────────────────────────────────────────────────
-# For mobile camera, replace with your phone's IP:
-# CAMERA_SOURCE = "http://192.168.x.x:8080/video"
-CAMERA_SOURCE   = 0
-MODEL_PATH      = "yolo11n.pt"
-EMPLOYEES_FILE  = "../employee_data/employees.json"
-REPORT_PATH     = "../reports/employee_safety.xlsx"
-
-
-# How many seconds to show result before resetting for next worker
-RESULT_DISPLAY_SECONDS = 5
-
 # ── Startup ────────────────────────────────────────────────────────
 print("\n" + "="*55)
 print("   IndustriGuard AI — QR + PPE Safety Check System")
@@ -73,7 +61,6 @@ current_employee  = None
 current_status    = None
 result_timer      = None
 ppe_check_frames  = 0
-PPE_FRAMES_NEEDED = 10   # Analyze 10 frames to confirm PPE status
 ppe_results_pool  = []   # Collect results over multiple frames
 
 while True:
@@ -180,7 +167,7 @@ while True:
             # Save to Excel
             reporter.update_employee(current_employee, current_status)
             # Send to backend
-            reporter_backend.send_check_result(current_employee, current_status)
+            reporter_backend.send_check_result(current_employee, current_status, camera_id=CAMERA_ID)
 
             result_timer = time.time()
             STATE = "DISPLAYING"

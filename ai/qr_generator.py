@@ -1,17 +1,21 @@
 import qrcode
 import json
 import os
+from pathlib import Path
 from PIL import Image, ImageDraw, ImageFont
+
+# Project root directory (parent of ai/)
+BASE_DIR = Path(__file__).parent.parent
 
 class QRGenerator:
     def __init__(
         self,
-        employees_file="employee_data/employees.json",
-        output_dir="employee_data/qr_cards"
+        employees_file=None,
+        output_dir=None
     ):
-        self.employees_file = employees_file
-        self.output_dir = output_dir
-        os.makedirs(output_dir, exist_ok=True)
+        self.employees_file = employees_file or str(BASE_DIR / "employee_data" / "employees.json")
+        self.output_dir = output_dir or str(BASE_DIR / "employee_data" / "qr_cards")
+        os.makedirs(self.output_dir, exist_ok=True)
 
     def load_employees(self):
         with open(self.employees_file, "r") as f:
@@ -137,8 +141,5 @@ class QRGenerator:
 
 # ── Run directly to generate all cards ────────────────────────────
 if __name__ == "__main__":
-    generator = QRGenerator(
-        employees_file="../employee_data/employees.json",
-        output_dir="../employee_data/qr_cards"
-    )
+    generator = QRGenerator()
     generator.generate_all()
