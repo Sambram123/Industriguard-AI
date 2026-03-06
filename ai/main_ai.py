@@ -76,6 +76,10 @@ ppe_check_frames  = 0
 PPE_FRAMES_NEEDED = 10   # Analyze 10 frames to confirm PPE status
 ppe_results_pool  = []   # Collect results over multiple frames
 
+# ADD THESE TWO LINES:
+countdown_timer   = None
+COUNTDOWN_SECONDS = 5
+
 while True:
     frame = camera.get_frame()
     if frame is None:
@@ -124,15 +128,92 @@ while True:
         employee = scanner.scan_frame(frame)
         frame    = scanner.draw_qr_overlay(frame, employee)
 
-        if employee:
-            current_employee = employee
-            ppe_check_frames = 0
-            ppe_results_pool = []
-            STATE = "CHECKING"
-            print(f"\n[Main] QR Scanned → {employee['id']} : {employee['name']}")
-            print("[Main] Starting PPE check...")
+    if employee and STATE == "SCANNING":
+        current_employee = employee
+        ppe_check_frames = 0
+        ppe_results_pool = []
+        countdown_timer  = time.time()
+        STATE = "COUNTDOWN"
+        scanner.reset()   # stops scanner from re-triggering
 
+ # ══════════════════════════════════════════════════════════════
+    # STATE: COUNTDOWN — Professional 5 second prep timer
     # ══════════════════════════════════════════════════════════════
+    elif STATE == "COUNTDOWN":
+
+        elapsed   = time.time() - countdown_timer
+        remaining = COUNTDOWN_SECONDS - int(elapsed)
+
+        # Dark overlay — top banner
+        cv2.rectangle(frame, (0, 55), (w, 115), (10, 10, 30), -1)
+        cv2.putText(
+            frame,
+            f"Welcome, {current_employee['name']}",
+            (w // 2 - cv2.getTextSize(f"Welcome, {current_employee['name']}", cv2.FONT_HERSHEY_SIMPLEX, 0.7, 2)[0][0] // 2, 82),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.7, (200, 200, 255), 2
+        )
+        cv2.putText(
+            frame,
+            f"{current_employee['department']} | {current_employee['id']}",
+            (w // 2 - cv2.getTextSize(f"{current_employee['department']} | {current_employee['id']}", cv2.FONT_HERSHEY_SIMPLEX, 0.5, 1)[0][0] // 2, 107),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.5, (120, 120, 180), 1
+        )
+
+        # Circle in center
+        cx, cy = w // 2, h // 2
+        cv2.circle(frame, (cx, cy), 90, (10, 10, 30), -1)       # fill
+        cv2.circle(frame, (cx, cy), 90, (0, 180, 255), 3)        # outer ring
+        cv2.circle(frame, (cx, cy), 75, (0, 100, 180), 1)        # inner ring
+
+        # Countdown number — perfectly centered in circle
+        if remaining > 0:
+            count_text = str(remaining)
+            font_scale = 4
+            thickness  = 6
+        else:
+            count_text = "GO!"
+            font_scale = 2
+            thickness  = 4
+
+        (tw, th), baseline = cv2.getTextSize(count_text, cv2.FONT_HERSHEY_SIMPLEX, font_scale, thickness)
+        tx = cx - tw // 2
+        ty = cy + th // 2
+
+        cv2.putText(
+            frame, count_text,
+            (tx, ty),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            font_scale, (0, 220, 255), thickness
+        )
+
+        # Message below circle
+        if remaining > 0:
+            msg = f"The PPE Scan Begins In  {remaining}  Second{'s' if remaining != 1 else ''}"
+        else:
+            msg = "Stand Still For PPE Scan"
+
+        msg_w = cv2.getTextSize(msg, cv2.FONT_HERSHEY_SIMPLEX, 0.65, 2)[0][0]
+        cv2.putText(
+            frame, msg,
+            (w // 2 - msg_w // 2, cy + 130),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.65, (255, 255, 255), 2
+        )
+
+        # Progress bar at bottom
+        progress  = min(elapsed / COUNTDOWN_SECONDS, 1.0)
+        bar_width = int(w * progress)
+        cv2.rectangle(frame, (0, h - 10), (w, h),         (20, 20, 40),   -1)
+        cv2.rectangle(frame, (0, h - 10), (bar_width, h), (0, 180, 255),  -1)
+
+        # Transition
+        if elapsed >= COUNTDOWN_SECONDS:
+            STATE = "CHECKING"
+            print(f"[Main] Countdown done → Starting PPE check for {current_employee['name']}")
+
+            # ══════════════════════════════════════════════════════════════
     # STATE: CHECKING — QR found, now check PPE
     # ══════════════════════════════════════════════════════════════
     elif STATE == "CHECKING":
@@ -185,7 +266,7 @@ while True:
             result_timer = time.time()
             STATE = "DISPLAYING"
             print(f"[Main] Result → {current_status['status']}")
-
+            
     # ══════════════════════════════════════════════════════════════
     # STATE: DISPLAYING — Show result, then reset
     # ══════════════════════════════════════════════════════════════
