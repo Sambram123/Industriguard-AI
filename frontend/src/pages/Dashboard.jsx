@@ -2,6 +2,7 @@ import { useEffect, useState, useCallback } from "react";
 import StatCards       from "../components/StatCards";
 import EmployeeTable   from "../components/EmployeeTable";
 import TrendChart      from "../components/TrendChart";
+import DepartmentChart from "../components/DepartmentChart";
 import CheckHistory    from "../components/CheckHistory";
 
 const API = "http://localhost:5000";
@@ -10,29 +11,33 @@ export default function Dashboard({ latestUpdate }) {
   const [stats,       setStats]       = useState(null);
   const [employees,   setEmployees]   = useState([]);
   const [trend,       setTrend]       = useState([]);
+  const [departments, setDepartments] = useState([]);
   const [checks,      setChecks]      = useState([]);
   const [lastRefresh, setLastRefresh] = useState(null);
   const [loading,     setLoading]     = useState(true);
 
   const fetchAll = useCallback(async () => {
     try {
-      const [statsRes, empRes, trendRes, checksRes] = await Promise.all([
+      const [statsRes, empRes, trendRes, deptRes, checksRes] = await Promise.all([
         fetch(`${API}/api/stats`),
         fetch(`${API}/api/employees/status`),
         fetch(`${API}/api/trend`),
+        fetch(`${API}/api/departments`),
         fetch(`${API}/api/checks?limit=30`)
       ]);
 
-      const [statsData, empData, trendData, checksData] = await Promise.all([
+      const [statsData, empData, trendData, deptData, checksData] = await Promise.all([
         statsRes.json(),
         empRes.json(),
         trendRes.json(),
+        deptRes.json(),
         checksRes.json()
       ]);
 
       setStats(statsData);
       setEmployees(empData);
       setTrend(trendData);
+      setDepartments(deptData);
       setChecks(checksData);
       setLastRefresh(new Date().toLocaleTimeString());
       setLoading(false);
@@ -99,6 +104,9 @@ export default function Dashboard({ latestUpdate }) {
 
       {/* Trend chart */}
       <TrendChart trend={trend} />
+
+      {/* Department chart */}
+      <DepartmentChart departments={departments} />
 
       {/* Check history */}
       <CheckHistory checks={checks} />

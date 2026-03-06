@@ -4,8 +4,11 @@ ultralytics==8.4.18
 pillow==12.1.1
 numpy==2.4.2
 
-# QR Code (pyzbar optional - using OpenCV QR detector instead)
-qrcode==8.2
+# QR Code
+qrcode[pil]==8.2
+
+# Environment variables
+python-dotenv==1.0.0
 
 # Excel Reporting
 openpyxl==3.1.5

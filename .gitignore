@@ -11,6 +11,10 @@ build/
 # Database
 *.db
 
+# Generated files
+employee_data/qr_cards/
+reports/
+
 # Environment variables
 .env
 
