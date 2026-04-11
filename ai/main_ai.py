@@ -4,7 +4,6 @@ import os
 import sys
 
 from config import (
-    CAMERA_SOURCE,
     BACKEND_URL,
     MODEL_PATH,
     EMPLOYEES_FILE,
