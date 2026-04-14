@@ -11,6 +11,11 @@ const PPEIcon = ({ present, label }) => (
   </span>
 );
 
+const safetyPct = (emp) => {
+  const present = (emp?.has_helmet ? 1 : 0) + (emp?.has_vest ? 1 : 0);
+  return Math.round((present / 2) * 100);
+};
+
 export default function EmployeeTable({ employees, latestUpdate }) {
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState("ALL");
@@ -110,6 +115,7 @@ export default function EmployeeTable({ employees, latestUpdate }) {
                 <th>Role</th>
                 <th>Helmet</th>
                 <th>Safety Vest</th>
+                <th>Safety %</th>
                 <th>Status</th>
                 <th>Last Checked</th>
               </tr>
@@ -141,6 +147,12 @@ export default function EmployeeTable({ employees, latestUpdate }) {
                   <td style={{ color: "var(--text-secondary)", fontSize: "13px" }}>{emp.role}</td>
                   <td><PPEIcon present={emp.has_helmet} label="Helmet" /></td>
                   <td><PPEIcon present={emp.has_vest}   label="Vest"   /></td>
+                  <td
+                    className="text-xs font-semibold"
+                    style={{ color: "var(--text-secondary)", fontFamily: "var(--font-mono)" }}
+                  >
+                    {safetyPct(emp)}%
+                  </td>
                   <td>
                     <span className={emp.status === "READY" ? "badge-ready" : "badge-not-ready"}>
                       {emp.status}

@@ -1,10 +1,12 @@
 import requests
 import time
+from config import VERBOSE_LOGS
 
 class Reporter:
     def __init__(self, backend_url="http://localhost:5000"):
         self.backend_url = backend_url
-        print(f"[Reporter] Initialized → backend: {backend_url}")
+        if VERBOSE_LOGS:
+            print(f"[Reporter] Initialized → backend: {backend_url}")
 
     def send_check_result(self, employee, status_data, camera_id="CAM-01"):
         """
@@ -20,6 +22,8 @@ class Reporter:
             "has_vest":      status_data["has_vest"],
             "missing_ppe":   status_data["missing"],
             "status":        status_data["status"],
+            "safety_percentage": status_data.get("safety_percentage", None),
+            "track_id":          status_data.get("track_id", None),
             "camera_id":     camera_id or "CAM-01",
             "timestamp":     time.strftime("%Y-%m-%d %H:%M:%S")
         }
@@ -31,8 +35,9 @@ class Reporter:
                 timeout=3
             )
             if response.status_code == 200:
-                result = response.json()
-                print(f"[Reporter] Backend saved → Log ID: {result.get('log_id')}")
+                if VERBOSE_LOGS:
+                    result = response.json()
+                    print(f"[Reporter] Backend saved → Log ID: {result.get('log_id')}")
             else:
                 print(f"[Reporter] Backend error: {response.status_code}")
 

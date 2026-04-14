@@ -11,7 +11,9 @@
 #   "webcam"       → Laptop built-in webcam
 #   "video"        → Recorded video file (for testing)
 
-CAMERA_MODE = "usb_mobile"
+# Default to laptop webcam so the app works out-of-the-box.
+# Switch to "usb_mobile" / "usb_tether" / "wifi" when using a phone camera.
+CAMERA_MODE = "webcam"
 
 # ── USB Mobile Settings (DroidCam / Iriun / Camo) ────────
 # When you connect your phone via USB with DroidCam or Iriun,
@@ -41,7 +43,30 @@ BACKEND_URL = "http://localhost:5000"
 # ── AI Model Settings ────────────────────────────────────
 MODEL_PATH = "yolo11n.pt"  # Replace with PPE model later
 
-# ── File Paths ────────────────────────────────────────────
+# ── Tracking Settings ───────────────────────────────────────
+# Enables Ultralytics ByteTrack for stable person IDs across frames.
+USE_BYTE_TRACK = True
+
+# ── Performance Settings ────────────────────────────────────
+# Run the heavy YOLO+tracking step only every N frames.
+# (Higher = faster, but overlays update less frequently.)
+INFERENCE_EVERY_N_FRAMES = 3
+
+# Reduce the input size for faster inference. (Typical: 480 or 640)
+# Set to None to use original frame size.
+INFERENCE_IMG_SIZE = 480
+
+# Turn off extra detector box drawing (saves CPU/GPU and avoids clutter)
+DRAW_DETECTOR_BOXES = False
+
+# Keep worker info visible on screen for a few seconds after brief detection dropouts.
+WORKER_INFO_PERSIST_SECONDS = 5
+
+# ── Logging ────────────────────────────────────────────────
+# Reduce terminal spam for better performance/readability.
+VERBOSE_LOGS = False
+
+# ── File Paths ─────────────────────────────────────────────
 EMPLOYEES_FILE = "../employee_data/employees.json"
 REPORT_PATH    = "../reports/employee_safety.xlsx"
 

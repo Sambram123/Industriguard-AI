@@ -1,5 +1,10 @@
 export default function CheckHistory({ checks }) {
     const list = checks || [];
+
+    const safetyPct = (check) => {
+      const present = (check?.has_helmet ? 1 : 0) + (check?.has_vest ? 1 : 0);
+      return Math.round((present / 2) * 100);
+    };
   
     return (
       <div className="panel p-5">
@@ -67,6 +72,12 @@ export default function CheckHistory({ checks }) {
                   <span className={check.status === "READY" ? "badge-ready" : "badge-not-ready"}>
                     {check.status}
                   </span>
+                  <p
+                    className="text-xs mt-1"
+                    style={{ color: "var(--text-secondary)", fontFamily: "var(--font-mono)" }}
+                  >
+                    Safety: {safetyPct(check)}%
+                  </p>
                   <p
                     className="text-xs mt-1"
                     style={{ color: "var(--text-muted)", fontFamily: "var(--font-mono)" }}

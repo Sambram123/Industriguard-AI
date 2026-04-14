@@ -4,6 +4,7 @@ from openpyxl.styles import (
 )
 from datetime import datetime
 import os
+from config import VERBOSE_LOGS
 
 class ExcelReporter:
     def __init__(self, report_path="reports/employee_safety.xlsx"):
@@ -14,10 +15,12 @@ class ExcelReporter:
         if os.path.exists(report_path):
             self.wb = openpyxl.load_workbook(report_path)
             self.ws = self.wb.active
-            print(f"[ExcelReporter] Loaded existing report → {report_path}")
+            if VERBOSE_LOGS:
+                print(f"[ExcelReporter] Loaded existing report → {report_path}")
         else:
             self._create_new_report()
-            print(f"[ExcelReporter] Created new report → {report_path}")
+            if VERBOSE_LOGS:
+                print(f"[ExcelReporter] Created new report → {report_path}")
 
     def _create_new_report(self):
         """Creates a fresh Excel file with headers"""
@@ -113,9 +116,11 @@ class ExcelReporter:
         row_num = self._find_employee_row(emp_id)
         if not row_num:
             row_num = self._get_next_empty_row()
-            print(f"[ExcelReporter] Adding new row for {emp_id}")
+            if VERBOSE_LOGS:
+                print(f"[ExcelReporter] Adding new row for {emp_id}")
         else:
-            print(f"[ExcelReporter] Updating row {row_num} for {emp_id}")
+            if VERBOSE_LOGS:
+                print(f"[ExcelReporter] Updating row {row_num} for {emp_id}")
 
         # ── Row data ──────────────────────────────────────────────
         row_data = [
@@ -171,7 +176,8 @@ class ExcelReporter:
         self.ws.row_dimensions[row_num].height = 22
         self._save()
 
-        print(f"[ExcelReporter] Saved → {emp_id} | {status}")
+        if VERBOSE_LOGS:
+            print(f"[ExcelReporter] Saved → {emp_id} | {status}")
 
     def _save(self):
         self.wb.save(self.report_path)

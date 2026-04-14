@@ -72,9 +72,9 @@ class CameraFeed:
         print(f"[CameraFeed] Source : {self._source_label()}")
         print(f"[CameraFeed] Connecting...")
 
-        # For USB mobile (DroidCam/Iriun), use DirectShow on Windows
-        # for faster and more reliable connection
-        if self.mode == "usb_mobile":
+        # On Windows, DirectShow is usually the most reliable backend for
+        # local cameras (laptop webcam, USB capture devices, DroidCam/Iriun virtual cams).
+        if isinstance(self.source, int):
             self.cap = cv2.VideoCapture(self.source, cv2.CAP_DSHOW)
         else:
             self.cap = cv2.VideoCapture(self.source)
