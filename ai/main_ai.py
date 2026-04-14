@@ -11,7 +11,11 @@ from config import (
     REPORT_PATH,
     RESULT_DISPLAY_SECONDS,
     PPE_FRAMES_NEEDED,
-    CAMERA_ID
+    CAMERA_ID,
+    USE_BYTE_TRACK,
+    INFERENCE_EVERY_N_FRAMES,
+    INFERENCE_IMG_SIZE,
+    DRAW_DETECTOR_BOXES
 )
 
 from camera_feed    import CameraFeed
@@ -32,6 +36,53 @@ detector = PPEDetector(model_path=MODEL_PATH)
 safety   = SafetyStatus()
 reporter = ExcelReporter(report_path=REPORT_PATH)
 reporter_backend = Reporter(backend_url=BACKEND_URL)
+
+# Tracking state for stable labels (used when USE_BYTE_TRACK=True)
+# Employee labels persist while the person is visible; they are removed as soon
+# as the tracked person disappears from the frame.
+track_employee = {}     # track_id -> emp_dict (sticky while track is alive)
+track_last_seen = {}    # track_id -> time.time()
+
+# Backend/Excel reporting de-dupe (multi-person mode)
+MULTI_REPORT_MIN_INTERVAL_SECONDS = 5.0
+last_sent = {}  # employee_id -> {"status": str, "has_helmet": bool, "has_vest": bool, "t": float}
+
+# Cache last expensive inference results (for smooth FPS)
+frame_index = 0
+cached_detections = []
+cached_persons_compliance = []
+
+def _bbox_iou(a, b):
+    ax1, ay1, ax2, ay2 = a
+    bx1, by1, bx2, by2 = b
+    ix1 = max(ax1, bx1)
+    iy1 = max(ay1, by1)
+    ix2 = min(ax2, bx2)
+    iy2 = min(ay2, by2)
+    iw = max(0, ix2 - ix1)
+    ih = max(0, iy2 - iy1)
+    inter = iw * ih
+    if inter <= 0:
+        return 0.0
+    area_a = max(0, (ax2 - ax1)) * max(0, (ay2 - ay1))
+    area_b = max(0, (bx2 - bx1)) * max(0, (by2 - by1))
+    denom = area_a + area_b - inter
+    return float(inter / denom) if denom > 0 else 0.0
+
+def _bbox_center(b):
+    x1, y1, x2, y2 = b
+    return ((x1 + x2) / 2.0, (y1 + y2) / 2.0)
+
+def _dist2(a, b):
+    dx = a[0] - b[0]
+    dy = a[1] - b[1]
+    return dx * dx + dy * dy
+
+def _qr_poly_to_rect(qr_poly):
+    pts = qr_poly.reshape(-1, 2)
+    xs = pts[:, 0]
+    ys = pts[:, 1]
+    return [int(xs.min()), int(ys.min()), int(xs.max()), int(ys.max())]
 
 cam_info = camera.get_info()
 print(f"\n[Camera] Type   : {cam_info['type']}")
@@ -75,6 +126,194 @@ while True:
 
     h, w = frame.shape[:2]
 
+    # ── Multi-person overlay (QR → person bbox + PPE + safety%) ─────
+    # This runs every frame and does NOT change the existing single-person
+    # state machine below (scan → countdown → checking → display).
+    try:
+        qr_results = scanner.scan_frame_multi(frame)
+        frame_index += 1
+
+        should_infer = (frame_index % max(1, int(INFERENCE_EVERY_N_FRAMES)) == 0)
+        if should_infer:
+            detections = (
+                detector.detect_with_tracks_fast(frame, imgsz=INFERENCE_IMG_SIZE)
+                if USE_BYTE_TRACK
+                else detector.detect(frame)
+            )
+            cached_detections = detections
+            cached_persons_compliance = detector.per_person_compliance(detections)
+        else:
+            detections = cached_detections
+
+        if DRAW_DETECTOR_BOXES and detections:
+            frame = detector.draw_boxes(frame, detections)
+
+        persons_compliance = cached_persons_compliance
+        now = time.time()
+
+        # Mark currently visible tracks and immediately forget those that disappeared
+        visible_track_ids = set()
+        for pc in (persons_compliance or []):
+            tid = pc["person_det"].get("track_id")
+            if tid is not None:
+                tid = int(tid)
+                visible_track_ids.add(tid)
+                track_last_seen[tid] = now
+
+        for tid in list(track_last_seen.keys()):
+            if tid not in visible_track_ids:
+                track_last_seen.pop(tid, None)
+                track_employee.pop(tid, None)
+
+        # Associate QR -> tracked person using IoU-first, distance fallback
+        persons = [pc for pc in (persons_compliance or []) if pc.get("person_det")]
+
+        # IoU pass
+        used_person_idxs = set()
+        for r in qr_results:
+            emp = r.get("employee")
+            poly = r.get("bbox")
+            if not emp or poly is None:
+                continue
+
+            qr_rect = _qr_poly_to_rect(poly)
+
+            best_i = None
+            best_iou = 0.0
+            for i, pc in enumerate(persons):
+                if i in used_person_idxs:
+                    continue
+                pb = pc["person_det"]["bbox"]
+                iou = _bbox_iou(qr_rect, pb)
+                if iou > best_iou:
+                    best_iou = iou
+                    best_i = i
+
+            if best_i is not None and best_iou >= 0.05:
+                tid = persons[best_i]["person_det"].get("track_id")
+                if tid is not None:
+                    track_employee[int(tid)] = emp
+                    used_person_idxs.add(best_i)
+
+        # Distance fallback for any QR not assigned via IoU
+        for r in qr_results:
+            emp = r.get("employee")
+            poly = r.get("bbox")
+            if not emp or poly is None:
+                continue
+
+            qr_rect = _qr_poly_to_rect(poly)
+            qc = _bbox_center(qr_rect)
+
+            best_i = None
+            best_d = None
+            for i, pc in enumerate(persons):
+                if i in used_person_idxs:
+                    continue
+                tid = pc["person_det"].get("track_id")
+                if tid is None:
+                    continue
+                d = _dist2(qc, _bbox_center(pc["person_det"]["bbox"]))
+                if best_d is None or d < best_d:
+                    best_d = d
+                    best_i = i
+
+            if best_i is not None:
+                tid = persons[best_i]["person_det"].get("track_id")
+                if tid is not None:
+                    track_employee[int(tid)] = emp
+                    used_person_idxs.add(best_i)
+
+        # Draw per-person overlays using stable track_id
+        for pc in persons:
+            pb = pc["person_det"]["bbox"]
+            x1, y1, x2, y2 = pb
+            tid = pc["person_det"].get("track_id")
+
+            comp = pc
+            has_helmet = bool(comp.get("has_helmet"))
+            has_vest = bool(comp.get("has_vest"))
+            safety_pct = int(comp.get("safety_percentage") or 0)
+            status = "READY" if (has_helmet and has_vest) else "NOT READY"
+
+            emp = None
+            if tid is not None and int(tid) in track_employee:
+                emp = track_employee[int(tid)]
+
+            if emp:
+                color = (0, 200, 0) if status == "READY" else (0, 0, 255)
+            else:
+                color = (180, 180, 180)
+
+            cv2.rectangle(frame, (x1, y1), (x2, y2), color, 3)
+
+            if emp:
+                lines = [
+                    f"{emp['name']} ({emp['id']})",
+                    f"{emp.get('department','')} | {emp.get('role','')}",
+                    f"Helmet: {'Yes' if has_helmet else 'No'}  Vest: {'Yes' if has_vest else 'No'}",
+                    f"Safety: {safety_pct}%  Status: {status}",
+                ]
+
+                # Permanent association + continuous reporting:
+                # send to backend + update Excel when status changes or at a slow interval.
+                emp_id = emp["id"]
+                prev = last_sent.get(emp_id)
+                should_send = False
+                if prev is None:
+                    should_send = True
+                else:
+                    changed = (
+                        prev["status"] != status or
+                        prev["has_helmet"] != has_helmet or
+                        prev["has_vest"] != has_vest
+                    )
+                    if changed or (now - prev["t"]) >= MULTI_REPORT_MIN_INTERVAL_SECONDS:
+                        should_send = True
+
+                if should_send:
+                    compliance = {
+                        "has_helmet": has_helmet,
+                        "has_vest": has_vest,
+                        "missing": ([] if has_helmet else ["Helmet"]) + ([] if has_vest else ["Safety Vest"])
+                    }
+                    status_data = safety.evaluate(compliance)
+                    status_data["safety_percentage"] = safety_pct
+                    status_data["track_id"] = int(tid) if tid is not None else None
+
+                    # Save/update local Excel (one row per employee)
+                    reporter.update_employee(emp, status_data)
+                    # Publish to backend -> WebSocket -> frontend
+                    reporter_backend.send_check_result(emp, status_data, camera_id=CAMERA_ID)
+
+                    last_sent[emp_id] = {
+                        "status": status,
+                        "has_helmet": has_helmet,
+                        "has_vest": has_vest,
+                        "t": now
+                    }
+            else:
+                label_id = f"#{int(tid)}" if tid is not None else ""
+                lines = [
+                    f"Person {label_id}".strip(),
+                    f"Helmet: {'Yes' if has_helmet else 'No'}  Vest: {'Yes' if has_vest else 'No'}",
+                    f"Safety: {safety_pct}%",
+                ]
+
+            ty = y1 - 10
+            for line in reversed(lines):
+                (tw, th), _ = cv2.getTextSize(line, cv2.FONT_HERSHEY_SIMPLEX, 0.55, 2)
+                ty = max(20, ty)
+                cv2.rectangle(frame, (x1, ty - th - 8), (x1 + tw + 10, ty + 4), (0, 0, 0), -1)
+                cv2.putText(frame, line, (x1 + 5, ty), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (255, 255, 255), 2)
+                ty -= (th + 12)
+
+        # Also draw QR overlays (helpful for debugging association)
+        frame = scanner.draw_qr_overlay_multi(frame, qr_results)
+    except Exception as e:
+        # Keep the main loop resilient
+        print(f"[Main] Multi-overlay error: {e}")
+
     # ── Top instruction banner ─────────────────────────────────────
     cv2.rectangle(frame, (0, 0), (w, 50), (20, 60, 120), -1)
     cv2.putText(
@@ -85,31 +324,20 @@ while True:
         0.75, (255, 255, 255), 2
     )
 
+    # Put scanning instruction in the header (not in the middle of frame)
+    if STATE == "SCANNING":
+        cv2.putText(
+            frame,
+            "Show QR ID card to the camera",
+            (w - 340, 32),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.6, (255, 255, 255), 2
+        )
+
     # ══════════════════════════════════════════════════════════════
     # STATE: SCANNING — Wait for QR code
     # ══════════════════════════════════════════════════════════════
     if STATE == "SCANNING":
-
-        # Show instruction
-        cv2.putText(
-            frame,
-            "Please show your QR ID Card to the camera",
-            (w // 2 - 250, h // 2),
-            cv2.FONT_HERSHEY_SIMPLEX,
-            0.8, (255, 255, 0), 2
-        )
-
-        # Scanning border animation (yellow box in center)
-        box_x1, box_y1 = w // 2 - 150, h // 2 - 150
-        box_x2, box_y2 = w // 2 + 150, h // 2 + 100
-        cv2.rectangle(frame, (box_x1, box_y1), (box_x2, box_y2),
-                      (0, 255, 255), 2)
-        cv2.putText(
-            frame, "[ SCAN AREA ]",
-            (box_x1 + 30, box_y1 - 10),
-            cv2.FONT_HERSHEY_SIMPLEX,
-            0.6, (0, 255, 255), 1
-        )
 
         # Try to scan QR
         employee = scanner.scan_frame(frame)

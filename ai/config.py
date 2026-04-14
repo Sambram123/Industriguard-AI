@@ -20,6 +20,26 @@ BACKEND_URL = "http://localhost:5000"
 # ── AI Model Settings ──────────────────────────────────────
 MODEL_PATH = "yolo11n.pt"  # Replace with PPE model later
 
+# ── Tracking Settings ───────────────────────────────────────
+# Enables Ultralytics ByteTrack for stable person IDs across frames.
+USE_BYTE_TRACK = True
+
+# ── Performance Settings ────────────────────────────────────
+# Run the heavy YOLO+tracking step only every N frames.
+# (Higher = faster, but overlays update less frequently.)
+INFERENCE_EVERY_N_FRAMES = 3
+
+# Reduce the input size for faster inference. (Typical: 480 or 640)
+# Set to None to use original frame size.
+INFERENCE_IMG_SIZE = 480
+
+# Turn off extra detector box drawing (saves CPU/GPU and avoids clutter)
+DRAW_DETECTOR_BOXES = False
+
+# ── Logging ────────────────────────────────────────────────
+# Reduce terminal spam for better performance/readability.
+VERBOSE_LOGS = False
+
 # ── File Paths ─────────────────────────────────────────────
 EMPLOYEES_FILE = "../employee_data/employees.json"
 REPORT_PATH    = "../reports/employee_safety.xlsx"

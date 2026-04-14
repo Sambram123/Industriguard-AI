@@ -43,6 +43,78 @@ class QRScanner:
 
         return None
 
+    def scan_frame_multi(self, frame):
+        """
+        Detects and decodes MULTIPLE QR codes in a single frame.
+        Returns a list of dicts: [{ raw, employee, bbox }, ...]
+        Where bbox is a 4-point polygon (int) if available.
+        """
+        results = []
+
+        # OpenCV supports detectAndDecodeMulti on most builds.
+        try:
+            ok, decoded_info, points, _ = self.qr_detector.detectAndDecodeMulti(frame)
+        except Exception:
+            ok, decoded_info, points = False, [], None
+
+        if not ok or not decoded_info:
+            # Fallback to single decode (keeps old behavior working)
+            data, bbox, _ = self.qr_detector.detectAndDecode(frame)
+            if data:
+                raw = data.strip()
+                employee = self.employee_db.get(raw)
+                results.append({
+                    "raw": raw,
+                    "employee": employee,
+                    "bbox": bbox.astype(int) if bbox is not None else None
+                })
+            return results
+
+        # decoded_info is list-like of strings; points is Nx4x2
+        for i, data in enumerate(decoded_info):
+            if not data:
+                continue
+            raw = data.strip()
+            employee = self.employee_db.get(raw)
+            bbox = None
+            if points is not None and i < len(points) and points[i] is not None:
+                bbox = points[i].astype(int)
+
+            results.append({
+                "raw": raw,
+                "employee": employee,
+                "bbox": bbox
+            })
+
+        return results
+
+    def draw_qr_overlay_multi(self, frame, qr_results):
+        """Draws overlays for multiple QR codes (polylines + label)."""
+        for r in (qr_results or []):
+            bbox = r.get("bbox")
+            if bbox is not None:
+                cv2.polylines(frame, [bbox], True, (0, 255, 0), 2)
+                x, y = int(bbox[0][0][0]), int(bbox[0][0][1])
+            else:
+                x, y = 10, 60
+
+            emp = r.get("employee")
+            if emp:
+                text = f"{emp['id']} — {emp['name']}"
+                color = (0, 255, 0)
+            else:
+                text = f"Unknown QR: {r.get('raw', '')}"
+                color = (0, 0, 255)
+
+            cv2.putText(
+                frame, text,
+                (x, max(20, y - 10)),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.55, color, 2
+            )
+
+        return frame
+
     def draw_qr_overlay(self, frame, detected_employee):
         data, bbox, _ = self.qr_detector.detectAndDecode(frame)
         

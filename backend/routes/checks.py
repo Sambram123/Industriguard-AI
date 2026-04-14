@@ -93,6 +93,8 @@ def receive_report():
         "has_vest":      has_vest,
         "missing_ppe":   data.get("missing_ppe", []),
         "status":        status,
+        "safety_percentage": data.get("safety_percentage", None),
+        "track_id":          data.get("track_id", None),
         "camera_id":     camera_id,
         "timestamp":     datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
     }
