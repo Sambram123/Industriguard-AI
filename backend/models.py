@@ -21,6 +21,9 @@ class EmployeeCheckLog(db.Model):
     # PPE results
     has_helmet         = db.Column(db.Boolean, default=False)
     has_vest           = db.Column(db.Boolean, default=False)
+    has_gloves         = db.Column(db.Boolean, default=False)
+    has_goggles        = db.Column(db.Boolean, default=False)
+    has_boots          = db.Column(db.Boolean, default=False)
     missing_ppe        = db.Column(db.String(200), default="")
 
     # Final decision
@@ -39,6 +42,9 @@ class EmployeeCheckLog(db.Model):
             "role":          self.role,
             "has_helmet":    self.has_helmet,
             "has_vest":      self.has_vest,
+            "has_gloves":    self.has_gloves,
+            "has_goggles":   self.has_goggles,
+            "has_boots":     self.has_boots,
             "missing_ppe":   self.missing_ppe,
             "status":        self.status,
             "camera_id":     self.camera_id
@@ -60,6 +66,9 @@ class EmployeeLatestStatus(db.Model):
     role               = db.Column(db.String(100), default="")
     has_helmet         = db.Column(db.Boolean, default=False)
     has_vest           = db.Column(db.Boolean, default=False)
+    has_gloves         = db.Column(db.Boolean, default=False)
+    has_goggles        = db.Column(db.Boolean, default=False)
+    has_boots          = db.Column(db.Boolean, default=False)
     missing_ppe        = db.Column(db.String(200), default="")
     status             = db.Column(db.String(15), nullable=False)
     last_checked       = db.Column(db.DateTime, default=datetime.utcnow)
@@ -74,6 +83,9 @@ class EmployeeLatestStatus(db.Model):
             "role":          self.role,
             "has_helmet":    self.has_helmet,
             "has_vest":      self.has_vest,
+            "has_gloves":    self.has_gloves,
+            "has_goggles":   self.has_goggles,
+            "has_boots":     self.has_boots,
             "missing_ppe":   self.missing_ppe,
             "status":        self.status,
             "last_checked":  self.last_checked.strftime("%Y-%m-%d %H:%M:%S"),

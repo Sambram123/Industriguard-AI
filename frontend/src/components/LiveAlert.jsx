@@ -68,12 +68,21 @@ export default function LiveAlert({ update }) {
         </p>
 
         {/* PPE status */}
-        <div className="flex gap-3 mb-2">
+        <div className="flex flex-wrap gap-3 mb-2">
           <span style={{ color: current.has_helmet ? "var(--green)" : "var(--red)", fontSize: "13px" }}>
             {current.has_helmet ? "✓" : "✗"} Helmet
           </span>
           <span style={{ color: current.has_vest ? "var(--green)" : "var(--red)", fontSize: "13px" }}>
             {current.has_vest ? "✓" : "✗"} Vest
+          </span>
+          <span style={{ color: current.has_gloves ? "var(--green)" : "var(--red)", fontSize: "13px" }}>
+            {current.has_gloves ? "✓" : "✗"} Gloves
+          </span>
+          <span style={{ color: current.has_goggles ? "var(--green)" : "var(--red)", fontSize: "13px" }}>
+            {current.has_goggles ? "✓" : "✗"} Glasses
+          </span>
+          <span style={{ color: current.has_boots ? "var(--green)" : "var(--red)", fontSize: "13px" }}>
+            {current.has_boots ? "✓" : "✗"} Boots
           </span>
         </div>
 

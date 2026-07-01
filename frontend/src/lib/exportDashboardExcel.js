@@ -12,9 +12,9 @@ function toYesNo(v) {
   return v ? "Yes" : "No";
 }
 
-function calcSafetyPercentage(hasHelmet, hasVest) {
-  const present = [!!hasHelmet, !!hasVest].filter(Boolean).length;
-  return Math.round((present / 2) * 100);
+function calcSafetyPercentage(hasHelmet, hasVest, hasGloves, hasGoggles, hasBoots) {
+  const present = [!!hasHelmet, !!hasVest, !!hasGloves, !!hasGoggles, !!hasBoots].filter(Boolean).length;
+  return Math.round((present / 5) * 100);
 }
 
 export function buildDashboardWorkbook({ stats, employees, trend, departments, checks }) {
@@ -28,12 +28,15 @@ export function buildDashboardWorkbook({ stats, employees, trend, departments, c
       name: e.employee_name ?? "",
       helmet: toYesNo(e.has_helmet),
       vest: toYesNo(e.has_vest),
-      safety_percentage: calcSafetyPercentage(e.has_helmet, e.has_vest),
+      gloves: toYesNo(e.has_gloves),
+      glasses: toYesNo(e.has_goggles),
+      boots: toYesNo(e.has_boots),
+      safety_percentage: calcSafetyPercentage(e.has_helmet, e.has_vest, e.has_gloves, e.has_goggles, e.has_boots),
       status: e.status ?? "",
     }));
 
   const workersWs = XLSX.utils.json_to_sheet(workers, {
-    header: ["name", "helmet", "vest", "safety_percentage", "status"],
+    header: ["name", "helmet", "vest", "gloves", "glasses", "boots", "safety_percentage", "status"],
   });
   XLSX.utils.book_append_sheet(wb, workersWs, safeSheetName("Workers"));
 
@@ -58,6 +61,9 @@ export function buildDashboardWorkbook({ stats, employees, trend, departments, c
     statsRows.push(["PPE violations (today)", ""]);
     statsRows.push(["no_helmet", stats.ppe_violations.no_helmet ?? ""]);
     statsRows.push(["no_vest", stats.ppe_violations.no_vest ?? ""]);
+    statsRows.push(["no_gloves", stats.ppe_violations.no_gloves ?? ""]);
+    statsRows.push(["no_goggles", stats.ppe_violations.no_goggles ?? ""]);
+    statsRows.push(["no_boots", stats.ppe_violations.no_boots ?? ""]);
   }
   const statsWs = XLSX.utils.aoa_to_sheet(
     statsRows.length ? statsRows : [["No stats available", ""]]
@@ -88,6 +94,9 @@ export function buildDashboardWorkbook({ stats, employees, trend, departments, c
       "role",
       "has_helmet",
       "has_vest",
+      "has_gloves",
+      "has_goggles",
+      "has_boots",
       "missing_ppe",
       "status",
       "camera_id",

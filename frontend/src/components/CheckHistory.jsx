@@ -2,8 +2,9 @@ export default function CheckHistory({ checks }) {
     const list = checks || [];
 
     const safetyPct = (check) => {
-      const present = (check?.has_helmet ? 1 : 0) + (check?.has_vest ? 1 : 0);
-      return Math.round((present / 2) * 100);
+      const present = (check?.has_helmet ? 1 : 0) + (check?.has_vest ? 1 : 0) +
+        (check?.has_gloves ? 1 : 0) + (check?.has_goggles ? 1 : 0) + (check?.has_boots ? 1 : 0);
+      return Math.round((present / 5) * 100);
     };
   
     return (
