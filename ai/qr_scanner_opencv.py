@@ -10,6 +10,7 @@ class QRScanner:
 
         self.current_employee = None
         self.scan_confirmed   = False
+        self._last_bbox       = None   # cache bbox from scan_frame for overlay
 
         print(f"[QRScanner] Loaded {len(self.employee_db)} employees from database")
         print("[QRScanner] Using OpenCV QR detector (no pyzbar)")
@@ -26,6 +27,7 @@ class QRScanner:
 
     def scan_frame(self, frame):
         data, bbox, _ = self.qr_detector.detectAndDecode(frame)
+        self._last_bbox = bbox  # cache for draw_qr_overlay
         
         if data:
             raw_data = data.strip()
@@ -93,8 +95,9 @@ class QRScanner:
         for r in (qr_results or []):
             bbox = r.get("bbox")
             if bbox is not None:
-                cv2.polylines(frame, [bbox], True, (0, 255, 0), 2)
-                x, y = int(bbox[0][0][0]), int(bbox[0][0][1])
+                pts = bbox.reshape(-1, 2)
+                cv2.polylines(frame, [bbox.reshape(-1, 1, 2)], True, (0, 255, 0), 2)
+                x, y = int(pts[0][0]), int(pts[0][1])
             else:
                 x, y = 10, 60
 
@@ -116,7 +119,8 @@ class QRScanner:
         return frame
 
     def draw_qr_overlay(self, frame, detected_employee):
-        data, bbox, _ = self.qr_detector.detectAndDecode(frame)
+        # Reuse cached bbox from scan_frame() — no redundant QR detection
+        bbox = self._last_bbox
         
         if bbox is not None:
             bbox = bbox.astype(int)
@@ -137,3 +141,4 @@ class QRScanner:
     def reset(self):
         self.current_employee = None
         self.scan_confirmed   = False
+        self._last_bbox       = None

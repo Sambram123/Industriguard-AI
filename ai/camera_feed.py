@@ -84,9 +84,12 @@ class CameraFeed:
             # HTTP streams need small buffer to reduce latency
             self.cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
         else:
-            # USB camera or webcam — request good resolution
-            self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1280)
-            self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
+            # USB camera or webcam — optimise for low latency
+            self.cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)              # minimal buffer
+            self.cap.set(cv2.CAP_PROP_FOURCC,
+                         cv2.VideoWriter_fourcc(*"MJPG"))          # MJPEG is faster than H264
+            self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
+            self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
             self.cap.set(cv2.CAP_PROP_FPS, 30)
 
         if not self.cap.isOpened():

@@ -13,7 +13,7 @@
 
 # Default to laptop webcam so the app works out-of-the-box.
 # Switch to "usb_mobile" / "usb_tether" / "wifi" when using a phone camera.
-CAMERA_MODE = "webcam"
+CAMERA_MODE = "usb_mobile"
 
 # ── USB Mobile Settings (DroidCam / Iriun / Camo) ────────
 # When you connect your phone via USB with DroidCam or Iriun,
@@ -41,7 +41,7 @@ VIDEO_FILE_PATH = "test_video.mp4"
 BACKEND_URL = "http://localhost:5000"
 
 # ── AI Model Settings ────────────────────────────────────
-MODEL_PATH = "yolo11n.pt"  # Replace with PPE model later
+MODEL_PATH = "ppe_model_v8.pt"  # Trained PPE model (25 classes: PPE, vehicles, equipment, person)
 
 # ── Tracking Settings ───────────────────────────────────────
 # Enables Ultralytics ByteTrack for stable person IDs across frames.
