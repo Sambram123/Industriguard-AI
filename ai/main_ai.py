@@ -2,6 +2,7 @@ import cv2
 import time
 import os
 import sys
+import numpy as np
 
 from config import (
     BACKEND_URL,
@@ -24,6 +25,7 @@ from ppe_detector   import PPEDetector
 from safety_status  import SafetyStatus
 from excel_reporter import ExcelReporter
 from reporter       import Reporter
+import ui_overlay as ui
 
 # ── Startup ────────────────────────────────────────────────────────
 print("\n" + "="*55)
@@ -114,7 +116,7 @@ result_timer      = None
 ppe_check_frames  = 0
 ppe_results_pool  = []   # Collect results over multiple frames
 
-# ADD THESE TWO LINES:
+# Countdown timer state
 countdown_timer   = None
 COUNTDOWN_SECONDS = 5
 
@@ -127,13 +129,18 @@ while True:
     h, w = frame.shape[:2]
 
     # ── Multi-person overlay (QR → person bbox + PPE + safety%) ─────
-    # This runs every frame and does NOT change the existing single-person
-    # state machine below (scan → countdown → checking → display).
+    # Only run the expensive multi-person pipeline during SCANNING state.
+    # During COUNTDOWN / CHECKING / DISPLAYING the single-person state
+    # machine handles everything — no need for the heavy overlay loop.
+    run_multi_overlay = (STATE == "SCANNING")
     try:
-        qr_results = scanner.scan_frame_multi(frame)
+        if run_multi_overlay:
+            qr_results = scanner.scan_frame_multi(frame)
+        else:
+            qr_results = []
         frame_index += 1
 
-        should_infer = (frame_index % max(1, int(INFERENCE_EVERY_N_FRAMES)) == 0)
+        should_infer = run_multi_overlay and (frame_index % max(1, int(INFERENCE_EVERY_N_FRAMES)) == 0)
         if should_infer:
             detections = (
                 detector.detect_with_tracks_fast(frame, imgsz=INFERENCE_IMG_SIZE)
@@ -232,27 +239,32 @@ while True:
             tid = pc["person_det"].get("track_id")
 
             comp = pc
-            has_helmet = bool(comp.get("has_helmet"))
-            has_vest = bool(comp.get("has_vest"))
+            has_helmet  = bool(comp.get("has_helmet"))
+            has_vest    = bool(comp.get("has_vest"))
+            has_gloves  = bool(comp.get("has_gloves"))
+            has_goggles = bool(comp.get("has_goggles"))
+            has_boots   = bool(comp.get("has_boots"))
             safety_pct = int(comp.get("safety_percentage") or 0)
-            status = "READY" if (has_helmet and has_vest) else "NOT READY"
+            all_ppe = has_helmet and has_vest and has_gloves and has_goggles and has_boots
+            status = "READY" if all_ppe else "NOT READY"
 
             emp = None
             if tid is not None and int(tid) in track_employee:
                 emp = track_employee[int(tid)]
 
             if emp:
-                color = (0, 200, 0) if status == "READY" else (0, 0, 255)
+                color = ui.ACCENT_GREEN if status == "READY" else ui.ACCENT_RED
             else:
-                color = (180, 180, 180)
+                color = ui.TEXT_MUTED
 
-            cv2.rectangle(frame, (x1, y1), (x2, y2), color, 3)
+            ui.draw_person_bbox(frame, (x1, y1, x2, y2), color, is_identified=bool(emp))
 
             if emp:
                 lines = [
                     f"{emp['name']} ({emp['id']})",
                     f"{emp.get('department','')} | {emp.get('role','')}",
-                    f"Helmet: {'Yes' if has_helmet else 'No'}  Vest: {'Yes' if has_vest else 'No'}",
+                    f"Helmet: {'Y' if has_helmet else 'N'}  Vest: {'Y' if has_vest else 'N'}  Gloves: {'Y' if has_gloves else 'N'}",
+                    f"Glasses: {'Y' if has_goggles else 'N'}  Boots: {'Y' if has_boots else 'N'}",
                     f"Safety: {safety_pct}%  Status: {status}",
                 ]
 
@@ -288,7 +300,14 @@ while True:
                     compliance = {
                         "has_helmet": has_helmet,
                         "has_vest": has_vest,
-                        "missing": ([] if has_helmet else ["Helmet"]) + ([] if has_vest else ["Safety Vest"])
+                        "has_gloves": has_gloves,
+                        "has_goggles": has_goggles,
+                        "has_boots": has_boots,
+                        "missing": ([] if has_helmet else ["Helmet"]) +
+                                   ([] if has_vest else ["Safety Vest"]) +
+                                   ([] if has_gloves else ["Gloves"]) +
+                                   ([] if has_goggles else ["Glasses"]) +
+                                   ([] if has_boots else ["Boots"])
                     }
                     status_data = safety.evaluate(compliance)
                     status_data["safety_percentage"] = safety_pct
@@ -305,48 +324,9 @@ while True:
                         "has_vest": has_vest,
                         "t": now
                     }
-            else:
-                label_id = f"#{int(tid)}" if tid is not None else ""
-                lines = [
-                    f"Person {label_id}".strip(),
-                    f"Helmet: {'Yes' if has_helmet else 'No'}  Vest: {'Yes' if has_vest else 'No'}",
-                    f"Safety: {safety_pct}%",
-                ]
 
-            # Draw worker info exactly once, anchored to the right side of the bbox.
-            font = cv2.FONT_HERSHEY_SIMPLEX
-            scale = 0.52
-            thickness = 2
-            pad_x = 8
-            pad_y = 6
-            line_gap = 6
-
-            sizes = [cv2.getTextSize(line, font, scale, thickness)[0] for line in lines]
-            text_w = max((sz[0] for sz in sizes), default=0)
-            text_h = max((sz[1] for sz in sizes), default=0)
-            box_w = text_w + pad_x * 2
-            box_h = (text_h * len(lines)) + (line_gap * (len(lines) - 1)) + pad_y * 2
-
-            # Preferred placement: immediately to the right of the bbox.
-            bx1 = x2 + 10
-            by1 = y1
-
-            # Clamp inside frame (fallback to left side if needed).
-            if bx1 + box_w > (w - 10):
-                bx1 = max(10, x1 - 10 - box_w)
-            by1 = min(max(10, by1), max(10, h - 10 - box_h))
-            bx2 = bx1 + box_w
-            by2 = by1 + box_h
-
-            # Background + border (border color matches bbox color).
-            cv2.rectangle(frame, (bx1, by1), (bx2, by2), (0, 0, 0), -1)
-            cv2.rectangle(frame, (bx1, by1), (bx2, by2), color, 2)
-
-            # Text lines (top-to-bottom).
-            ty = by1 + pad_y + text_h
-            for line in lines:
-                cv2.putText(frame, line, (bx1 + pad_x, ty), font, scale, (255, 255, 255), thickness)
-                ty += text_h + line_gap
+                # Draw worker info card only for identified employees
+                ui.draw_worker_info_card(frame, lines, (x1, y1, x2, y2), color, w, h)
 
         # Also draw QR overlays (helpful for debugging association)
         frame = scanner.draw_qr_overlay_multi(frame, qr_results)
@@ -355,33 +335,24 @@ while True:
         print(f"[Main] Multi-overlay error: {e}")
 
     # ── Top instruction banner ─────────────────────────────────────
-    cv2.rectangle(frame, (0, 0), (w, 50), (20, 60, 120), -1)
-    cv2.putText(
-        frame,
-        "IndustriGuard AI — Safety Check Station",
-        (15, 32),
-        cv2.FONT_HERSHEY_SIMPLEX,
-        0.75, (255, 255, 255), 2
-    )
-
-    # Put scanning instruction in the header (not in the middle of frame)
-    if STATE == "SCANNING":
-        cv2.putText(
-            frame,
-            "Show QR ID card to the camera",
-            (w - 340, 32),
-            cv2.FONT_HERSHEY_SIMPLEX,
-            0.6, (255, 255, 255), 2
-        )
+    bar_h = ui.draw_top_banner(frame)
 
     # ══════════════════════════════════════════════════════════════
     # STATE: SCANNING — Wait for QR code
     # ══════════════════════════════════════════════════════════════
     if STATE == "SCANNING":
+        ui.draw_scanning_state(frame, bar_h)
 
-        # Try to scan QR
-        employee = scanner.scan_frame(frame)
-        frame    = scanner.draw_qr_overlay(frame, employee)
+        # Reuse the first recognized employee from scan_frame_multi
+        # instead of calling scan_frame again (avoids redundant QR decode).
+        employee = None
+        for r in qr_results:
+            if r.get("employee"):
+                employee = r["employee"]
+                break
+
+        # Draw overlay using cached multi-scan results
+        frame = scanner.draw_qr_overlay_multi(frame, qr_results)
 
     if employee and STATE == "SCANNING":
         current_employee = employee
@@ -399,69 +370,7 @@ while True:
         elapsed   = time.time() - countdown_timer
         remaining = COUNTDOWN_SECONDS - int(elapsed)
 
-        # Dark overlay — top banner
-        cv2.rectangle(frame, (0, 55), (w, 115), (10, 10, 30), -1)
-        cv2.putText(
-            frame,
-            f"Welcome, {current_employee['name']}",
-            (w // 2 - cv2.getTextSize(f"Welcome, {current_employee['name']}", cv2.FONT_HERSHEY_SIMPLEX, 0.7, 2)[0][0] // 2, 82),
-            cv2.FONT_HERSHEY_SIMPLEX,
-            0.7, (200, 200, 255), 2
-        )
-        cv2.putText(
-            frame,
-            f"{current_employee['department']} | {current_employee['id']}",
-            (w // 2 - cv2.getTextSize(f"{current_employee['department']} | {current_employee['id']}", cv2.FONT_HERSHEY_SIMPLEX, 0.5, 1)[0][0] // 2, 107),
-            cv2.FONT_HERSHEY_SIMPLEX,
-            0.5, (120, 120, 180), 1
-        )
-
-        # Circle in center
-        cx, cy = w // 2, h // 2
-        cv2.circle(frame, (cx, cy), 90, (10, 10, 30), -1)       # fill
-        cv2.circle(frame, (cx, cy), 90, (0, 180, 255), 3)        # outer ring
-        cv2.circle(frame, (cx, cy), 75, (0, 100, 180), 1)        # inner ring
-
-        # Countdown number — perfectly centered in circle
-        if remaining > 0:
-            count_text = str(remaining)
-            font_scale = 4
-            thickness  = 6
-        else:
-            count_text = "GO!"
-            font_scale = 2
-            thickness  = 4
-
-        (tw, th), baseline = cv2.getTextSize(count_text, cv2.FONT_HERSHEY_SIMPLEX, font_scale, thickness)
-        tx = cx - tw // 2
-        ty = cy + th // 2
-
-        cv2.putText(
-            frame, count_text,
-            (tx, ty),
-            cv2.FONT_HERSHEY_SIMPLEX,
-            font_scale, (0, 220, 255), thickness
-        )
-
-        # Message below circle
-        if remaining > 0:
-            msg = f"The PPE Scan Begins In  {remaining}  Second{'s' if remaining != 1 else ''}"
-        else:
-            msg = "Stand Still For PPE Scan"
-
-        msg_w = cv2.getTextSize(msg, cv2.FONT_HERSHEY_SIMPLEX, 0.65, 2)[0][0]
-        cv2.putText(
-            frame, msg,
-            (w // 2 - msg_w // 2, cy + 130),
-            cv2.FONT_HERSHEY_SIMPLEX,
-            0.65, (255, 255, 255), 2
-        )
-
-        # Progress bar at bottom
-        progress  = min(elapsed / COUNTDOWN_SECONDS, 1.0)
-        bar_width = int(w * progress)
-        cv2.rectangle(frame, (0, h - 10), (w, h),         (20, 20, 40),   -1)
-        cv2.rectangle(frame, (0, h - 10), (bar_width, h), (0, 180, 255),  -1)
+        ui.draw_countdown(frame, current_employee, remaining, elapsed, COUNTDOWN_SECONDS)
 
         # Transition
         if elapsed >= COUNTDOWN_SECONDS:
@@ -474,20 +383,15 @@ while True:
     elif STATE == "CHECKING":
 
         # Show checking banner
-        cv2.rectangle(frame, (0, 55), (w, 95), (20, 100, 20), -1)
-        cv2.putText(
-            frame,
-            f"Checking PPE for: {current_employee['name']}  "
-            f"({ppe_check_frames}/{PPE_FRAMES_NEEDED})",
-            (15, 80),
-            cv2.FONT_HERSHEY_SIMPLEX,
-            0.65, (255, 255, 255), 2
-        )
+        ui.draw_checking_banner(frame, current_employee['name'],
+                                ppe_check_frames, PPE_FRAMES_NEEDED, bar_h)
 
-        # Run PPE detection on this frame
-        detections = detector.detect(frame)
+        # Reuse cached detections from the multi-person overlay
+        # instead of running detector.detect() again (halves GPU cost).
+        detections = cached_detections if cached_detections else detector.detect(frame)
         compliance = detector.check_ppe_compliance(detections)
-        frame      = detector.draw_boxes(frame, detections)
+        if DRAW_DETECTOR_BOXES:
+            frame = detector.draw_boxes(frame, detections)
 
         # Collect result
         ppe_results_pool.append(compliance)
@@ -497,18 +401,31 @@ while True:
         if ppe_check_frames >= PPE_FRAMES_NEEDED:
 
             # Majority vote across collected frames
-            helmet_votes = sum(1 for r in ppe_results_pool if r["has_helmet"])
-            vest_votes   = sum(1 for r in ppe_results_pool if r["has_vest"])
+            helmet_votes  = sum(1 for r in ppe_results_pool if r["has_helmet"])
+            vest_votes    = sum(1 for r in ppe_results_pool if r["has_vest"])
+            gloves_votes  = sum(1 for r in ppe_results_pool if r.get("has_gloves"))
+            goggles_votes = sum(1 for r in ppe_results_pool if r.get("has_goggles"))
+            boots_votes   = sum(1 for r in ppe_results_pool if r.get("has_boots"))
 
+            half = PPE_FRAMES_NEEDED // 2
             final_compliance = {
-                "has_helmet": helmet_votes >= PPE_FRAMES_NEEDED // 2,
-                "has_vest":   vest_votes   >= PPE_FRAMES_NEEDED // 2,
-                "missing":    []
+                "has_helmet":  helmet_votes  >= half,
+                "has_vest":    vest_votes    >= half,
+                "has_gloves":  gloves_votes  >= half,
+                "has_goggles": goggles_votes >= half,
+                "has_boots":   boots_votes   >= half,
+                "missing":     []
             }
             if not final_compliance["has_helmet"]:
                 final_compliance["missing"].append("Helmet")
             if not final_compliance["has_vest"]:
                 final_compliance["missing"].append("Safety Vest")
+            if not final_compliance["has_gloves"]:
+                final_compliance["missing"].append("Gloves")
+            if not final_compliance["has_goggles"]:
+                final_compliance["missing"].append("Glasses")
+            if not final_compliance["has_boots"]:
+                final_compliance["missing"].append("Boots")
 
             # Evaluate final status
             current_status = safety.evaluate(final_compliance)
@@ -527,29 +444,15 @@ while True:
     # ══════════════════════════════════════════════════════════════
     elif STATE == "DISPLAYING":
 
-        # Draw status overlay
-        frame = safety.draw_status(frame, current_status, current_employee)
+        # Draw modern result overlay
+        frame = ui.draw_result_overlay(frame, current_status, current_employee)
 
         # Countdown timer
         elapsed   = time.time() - result_timer
         remaining = int(RESULT_DISPLAY_SECONDS - elapsed)
 
-        cv2.putText(
-            frame,
-            f"Next check in {remaining}s...",
-            (w - 220, 35),
-            cv2.FONT_HERSHEY_SIMPLEX,
-            0.6, (200, 200, 200), 1
-        )
-
-        # Excel saved confirmation
-        cv2.putText(
-            frame,
-            "✓ Saved to Excel Report",
-            (w - 250, h - 110),
-            cv2.FONT_HERSHEY_SIMPLEX,
-            0.6, (0, 255, 100), 2
-        )
+        ui.draw_next_check_timer(frame, remaining)
+        ui.draw_saved_confirmation(frame)
 
         # Auto reset after display time
         if elapsed >= RESULT_DISPLAY_SECONDS:
@@ -560,7 +463,7 @@ while True:
             print("\n[Main] Ready for next worker...\n" + "-"*55)
 
     # ── Show frame ─────────────────────────────────────────────────
-    cv2.imshow("IndustriGuard AI — Safety Check", frame)
+    cv2.imshow("Industriguard-AI", frame)
 
     if cv2.waitKey(1) & 0xFF == ord('q'):
         print("\n[Main] Shutting down...")
