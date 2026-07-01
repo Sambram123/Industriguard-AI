@@ -59,6 +59,24 @@ def get_stats():
             EmployeeCheckLog.has_vest == False
         ).count()
 
+    no_gloves_count = EmployeeCheckLog.query\
+        .filter(
+            EmployeeCheckLog.timestamp >= today_start,
+            EmployeeCheckLog.has_gloves == False
+        ).count()
+
+    no_goggles_count = EmployeeCheckLog.query\
+        .filter(
+            EmployeeCheckLog.timestamp >= today_start,
+            EmployeeCheckLog.has_goggles == False
+        ).count()
+
+    no_boots_count = EmployeeCheckLog.query\
+        .filter(
+            EmployeeCheckLog.timestamp >= today_start,
+            EmployeeCheckLog.has_boots == False
+        ).count()
+
     # ── Ready percentage ───────────────────────────────────────────
     ready_pct = 0
     if total_today > 0:
@@ -77,8 +95,11 @@ def get_stats():
             "not_ready":        currently_not_ready
         },
         "ppe_violations": {
-            "no_helmet": no_helmet_count,
-            "no_vest":   no_vest_count
+            "no_helmet":  no_helmet_count,
+            "no_vest":    no_vest_count,
+            "no_gloves":  no_gloves_count,
+            "no_goggles": no_goggles_count,
+            "no_boots":   no_boots_count
         }
     })
 

@@ -12,8 +12,9 @@ const PPEIcon = ({ present, label }) => (
 );
 
 const safetyPct = (emp) => {
-  const present = (emp?.has_helmet ? 1 : 0) + (emp?.has_vest ? 1 : 0);
-  return Math.round((present / 2) * 100);
+  const present = (emp?.has_helmet ? 1 : 0) + (emp?.has_vest ? 1 : 0) +
+    (emp?.has_gloves ? 1 : 0) + (emp?.has_goggles ? 1 : 0) + (emp?.has_boots ? 1 : 0);
+  return Math.round((present / 5) * 100);
 };
 
 export default function EmployeeTable({ employees, latestUpdate }) {
@@ -115,6 +116,9 @@ export default function EmployeeTable({ employees, latestUpdate }) {
                 <th>Role</th>
                 <th>Helmet</th>
                 <th>Safety Vest</th>
+                <th>Gloves</th>
+                <th>Glasses</th>
+                <th>Boots</th>
                 <th>Safety %</th>
                 <th>Status</th>
                 <th>Last Checked</th>
@@ -145,8 +149,11 @@ export default function EmployeeTable({ employees, latestUpdate }) {
                   <td className="font-semibold">{emp.employee_name}</td>
                   <td style={{ color: "var(--text-secondary)" }}>{emp.department}</td>
                   <td style={{ color: "var(--text-secondary)", fontSize: "13px" }}>{emp.role}</td>
-                  <td><PPEIcon present={emp.has_helmet} label="Helmet" /></td>
-                  <td><PPEIcon present={emp.has_vest}   label="Vest"   /></td>
+                  <td><PPEIcon present={emp.has_helmet}  label="Helmet"  /></td>
+                  <td><PPEIcon present={emp.has_vest}    label="Vest"    /></td>
+                  <td><PPEIcon present={emp.has_gloves}  label="Gloves"  /></td>
+                  <td><PPEIcon present={emp.has_goggles} label="Glasses" /></td>
+                  <td><PPEIcon present={emp.has_boots}   label="Boots"   /></td>
                   <td
                     className="text-xs font-semibold"
                     style={{ color: "var(--text-secondary)", fontFamily: "var(--font-mono)" }}

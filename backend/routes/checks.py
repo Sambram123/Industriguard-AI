@@ -33,6 +33,9 @@ def receive_report():
     role          = data.get("role",          "")
     has_helmet    = data.get("has_helmet",    False)
     has_vest      = data.get("has_vest",      False)
+    has_gloves    = data.get("has_gloves",    False)
+    has_goggles   = data.get("has_goggles",   False)
+    has_boots     = data.get("has_boots",     False)
     missing_ppe   = ", ".join(data.get("missing_ppe", []))
     status        = data.get("status",        "NOT READY")
     camera_id     = data.get("camera_id",     "CAM-01")
@@ -45,6 +48,9 @@ def receive_report():
         role          = role,
         has_helmet    = has_helmet,
         has_vest      = has_vest,
+        has_gloves    = has_gloves,
+        has_goggles   = has_goggles,
+        has_boots     = has_boots,
         missing_ppe   = missing_ppe,
         status        = status,
         camera_id     = camera_id
@@ -63,6 +69,9 @@ def receive_report():
         existing.role          = role
         existing.has_helmet    = has_helmet
         existing.has_vest      = has_vest
+        existing.has_gloves    = has_gloves
+        existing.has_goggles   = has_goggles
+        existing.has_boots     = has_boots
         existing.missing_ppe   = missing_ppe
         existing.status        = status
         existing.last_checked  = datetime.utcnow()
@@ -76,6 +85,9 @@ def receive_report():
             role          = role,
             has_helmet    = has_helmet,
             has_vest      = has_vest,
+            has_gloves    = has_gloves,
+            has_goggles   = has_goggles,
+            has_boots     = has_boots,
             missing_ppe   = missing_ppe,
             status        = status,
             camera_id     = camera_id
@@ -91,6 +103,9 @@ def receive_report():
         "department":    department,
         "has_helmet":    has_helmet,
         "has_vest":      has_vest,
+        "has_gloves":    has_gloves,
+        "has_goggles":   has_goggles,
+        "has_boots":     has_boots,
         "missing_ppe":   data.get("missing_ppe", []),
         "status":        status,
         "safety_percentage": data.get("safety_percentage", None),
