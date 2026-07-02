@@ -1,112 +1,276 @@
-# Industriguard-AI
+# 🏭 IndustriGuard AI
 
-An AI-powered safety checkpoint for industrial environments that verifies employee identity via QR codes and checks PPE compliance (helmet, vest, etc.) using a camera feed and a YOLO-based detector. Results are stored in an Excel report and a Flask/SQLite backend, and visualized on a real-time React dashboard.
-
----
-
-## Project overview (current state)
-
-- **AI safety station (`ai/`)**:  
-  - Captures frames from a webcam or IP/mobile camera.  
-  - Scans employee QR codes to identify the worker from a local `employees.json` registry.  
-  - Runs a YOLOv8 model to detect PPE (helmet, safety vest) over multiple frames.  
-  - Decides whether the employee is **READY** or **NOT READY** based on PPE presence.  
-  - Writes results to an Excel report and sends them to the backend API.
-
-- **Backend API & analytics (`backend/`)**:  
-  - Flask + SQLite service that ingests each check result via a REST endpoint.  
-  - Stores full history and maintains the latest status for each employee.  
-  - Exposes REST endpoints and Socket.IO events to feed a live dashboard.  
-
-- **Frontend dashboard (`frontend/`)**:  
-  - React/Vite SPA that shows real-time and historical safety checks.  
-  - Displays key stats (totals, readiness %, violations), employee status table, trend chart, and department-wise compliance chart.  
-  - Listens to WebSocket (`Socket.IO`) events to update the UI when new checks arrive.
-
-- **Data & assets (`employee_data/`, `reports/`)**:  
-  - `employee_data/employees.json` holds employee metadata used during QR decoding.  
-  - `employee_data/qr_cards/` contains generated QR ID card PNGs.  
-  - `reports/employee_safety.xlsx` is the Excel report continuously updated by the AI station.
+**AI-powered industrial safety surveillance system** that verifies employee identity via QR codes and enforces full PPE (Personal Protective Equipment) compliance using real-time computer vision. Results are reported to a Flask/SQLite backend and visualized on a live React dashboard.
 
 ---
 
-## High-level architecture
+## ✨ Features
 
-1. **Camera & QR scan**  
-   - The AI station reads frames from a configured camera source.  
-   - A QR scanner decodes QR codes from the frame and looks up the employee in `employees.json`.  
-
-2. **PPE detection**  
-   - After a valid employee QR is detected, the system collects a configurable number of frames.  
-   - A YOLOv8 model (weights file in `ai/`) runs on each frame to detect PPE items like helmet and vest.  
-   - Results across frames are aggregated to decide final PPE compliance.
-
-3. **Safety decision & reporting**  
-   - A simple rule engine converts PPE compliance into a human-readable safety status (READY / NOT READY) and message.  
-   - The decision is:  
-     - **Saved to Excel** via an Excel reporter module.  
-     - **Sent to the backend** via an HTTP `POST /api/report` call with employee + PPE data.
-
-4. **Backend persistence & analytics**  
-   - The Flask backend saves every check in SQLite as a log entry and updates a per-employee latest status table.  
-   - It provides REST endpoints for:  
-     - Recent checks and per-employee history.  
-     - Today’s stats and readiness percentage.  
-     - 24-hour trend data.  
-     - Department-wise compliance breakdown.  
-   - It broadcasts a `check_update` Socket.IO event whenever a new result is stored.
-
-5. **Frontend dashboard**  
-   - The React app connects to the backend via REST + Socket.IO.  
-   - It:  
-     - Renders KPI cards for today’s checks, ready vs not ready, and violations.  
-     - Shows a live employee status table.  
-     - Visualizes trends and department metrics using charts.  
-     - Pops a live alert component on new `check_update` events.
+- **QR-based employee identification** — Workers scan their QR ID cards to start the safety check.
+- **Full PPE detection** — YOLOv8 model detects **5 PPE items** per worker:
+  | # | PPE Item | Detection Zone |
+  |---|----------|----------------|
+  | 1 | Helmet | Expanded upward from person bbox |
+  | 2 | Safety Vest | Within person bbox |
+  | 3 | Gloves | Within person bbox |
+  | 4 | Goggles | Expanded upward from person bbox |
+  | 5 | Boots | Expanded downward from person bbox |
+- **Per-person compliance** — Each detected person gets an individual safety score (`0–100%`) based on how many of the 5 items are present.
+- **Multi-person tracking** — ByteTrack integration allows simultaneous monitoring of multiple workers in the frame.
+- **Real-time dashboard** — React SPA with WebSocket updates, live alerts, trend charts, department analytics, and Excel export.
+- **Dual reporting** — Results are saved to both a local Excel workbook and the backend database.
 
 ---
 
-## Current implementation status
+## 📐 Architecture
 
-- **Implemented and working (based on code as of Feb 2026)**  
-  - Single-camera AI station pipeline: camera capture → QR decoding → multi-frame YOLO PPE check → safety decision.  
-  - Local Excel reporting with an `employee_safety.xlsx` workbook.  
-  - Backend ingestion endpoint for AI reports, SQLite models for logs and latest status, and analytics endpoints.  
-  - Real-time WebSocket (`Socket.IO`) push from backend to frontend on new checks.  
-  - React dashboard with stats cards, employee table, trend chart, department chart, check history table, and live alert.  
-  - Basic configuration via `ai/config.py` for camera source, model path, employee data path, report path, timing, and backend URL.
-
-- **Partially complete / to be extended later**  
-  - Currently optimized for a **single camera/station**; multi-camera scaling and dedicated camera IDs are present in config but would need more logic on the backend/frontend.  
-  - YOLO model uses a general or small checkpoint; swapping in a PPE-specialized model and tuning thresholds is anticipated.  
-  - Authentication, user roles, and production-grade deployment (Docker, CI/CD, monitoring, etc.) are not yet implemented.  
-  - Automated tests and extensive error handling (e.g., for network failures and corrupted camera streams) are relatively minimal.
+```
+┌─────────────────────────────────────────────────────────────┐
+│                     AI Station (ai/)                        │
+│                                                             │
+│  Camera Feed ──► QR Scanner ──► PPE Detector (YOLOv8)       │
+│                                      │                      │
+│                              Safety Status Engine           │
+│                              (5-item compliance)            │
+│                                 │          │                │
+│                          Excel Report   HTTP POST           │
+│                                            │                │
+└────────────────────────────────────────────┼────────────────┘
+                                             │
+                                             ▼
+┌─────────────────────────────────────────────────────────────┐
+│                   Backend (backend/)                        │
+│                                                             │
+│  Flask + Socket.IO ──► SQLite (logs + latest status)        │
+│       │                                                     │
+│       ├── REST API (stats, trend, departments, checks)      │
+│       └── WebSocket broadcast (check_update event)          │
+│                                                             │
+└────────────────────────────────────────────┬────────────────┘
+                                             │
+                                             ▼
+┌─────────────────────────────────────────────────────────────┐
+│                  Frontend (frontend/)                       │
+│                                                             │
+│  React/Vite SPA                                             │
+│       ├── Stat Cards (checks today, ready %, violations)    │
+│       ├── Employee Table (per-item ✓/✗ + safety %)          │
+│       ├── Trend Chart (24h hourly breakdown)                │
+│       ├── Department Chart (compliance by dept)             │
+│       ├── Check History (recent entries with safety %)      │
+│       ├── Live Alert Popup (real-time toast notification)   │
+│       └── Excel Export (client-side .xlsx download)         │
+│                                                             │
+└─────────────────────────────────────────────────────────────┘
+```
 
 ---
 
-## Tech stack
+## 🗂 Project Structure
 
-- **AI & computer vision**: Python, OpenCV, Ultralytics YOLOv8, pyzbar, Pillow, qrcode, openpyxl.  
-- **Backend**: Python, Flask, Flask-SocketIO, Flask-SQLAlchemy, SQLite.  
-- **Frontend**: React, Vite, socket.io-client, Recharts, modern CSS/utility-class-based styling.  
+```
+Industriguard-AI/
+├── ai/                          # AI safety station
+│   ├── main_ai.py               # Main entry point — state machine
+│   ├── ppe_detector.py          # YOLOv8 detection + per-person compliance
+│   ├── safety_status.py         # Rule engine (5-item PPE → READY/NOT READY)
+│   ├── camera_feed.py           # Camera abstraction (USB, WiFi, video)
+│   ├── qr_scanner_opencv.py     # QR decoding with OpenCV
+│   ├── ui_overlay.py            # Modern OpenCV overlay (PIL TrueType fonts)
+│   ├── reporter.py              # HTTP reporter → backend API
+│   ├── excel_reporter.py        # Local Excel report writer
+│   ├── qr_generator.py          # QR ID card generator
+│   ├── config.py                # Central configuration
+│   └── ppe_model_v8.pt          # Trained YOLOv8 PPE model weights
+│
+├── backend/                     # Flask REST + WebSocket API
+│   ├── app.py                   # Flask app factory + Socket.IO setup
+│   ├── database.py              # SQLAlchemy init
+│   ├── models.py                # DB models (CheckLog + LatestStatus)
+│   └── routes/
+│       ├── checks.py            # POST /api/report, GET /api/checks, etc.
+│       └── dashboard.py         # GET /api/stats, /api/trend, /api/departments
+│
+├── frontend/                    # React/Vite dashboard
+│   ├── src/
+│   │   ├── App.jsx              # Root component + Socket.IO connection
+│   │   ├── pages/
+│   │   │   └── Dashboard.jsx    # Main dashboard page
+│   │   ├── components/
+│   │   │   ├── StatCards.jsx     # KPI cards (checks, ready, not ready, total)
+│   │   │   ├── EmployeeTable.jsx # Live employee status table
+│   │   │   ├── TrendChart.jsx   # 24-hour trend chart (Recharts)
+│   │   │   ├── DepartmentChart.jsx # Department compliance chart
+│   │   │   ├── CheckHistory.jsx # Recent check entries
+│   │   │   └── LiveAlert.jsx    # Real-time toast notification
+│   │   └── lib/
+│   │       └── exportDashboardExcel.js # Client-side Excel export
+│   └── package.json
+│
+├── employee_data/               # Employee registry
+│   ├── employees.json           # Employee metadata (name, dept, role)
+│   └── qr_cards/                # Generated QR ID card images
+│
+├── reports/                     # Auto-generated reports
+│   └── employee_safety.xlsx     # Excel safety report (updated by AI station)
+│
+└── requirements.txt             # Python dependencies
+```
 
 ---
 
-## Running the system (high-level)
+## 🔧 Tech Stack
 
-> Note: Commands may need adjustments depending on your environment; see `ai/config.py` and backend/ frontend configs for exact settings.
+| Layer | Technologies |
+|-------|-------------|
+| **AI / CV** | Python 3, OpenCV, Ultralytics YOLOv8, ByteTrack, Pillow, NumPy |
+| **Backend** | Flask, Flask-SocketIO, Flask-SQLAlchemy, SQLite |
+| **Frontend** | React 19, Vite 7, Recharts, Socket.IO Client, SheetJS (xlsx), Tailwind CSS |
+| **Reporting** | openpyxl (server-side Excel), SheetJS (client-side Excel export) |
 
-1. **Set up Python environment**  
-   - Install dependencies from `requirements.txt` in a virtualenv.  
+---
 
-2. **Run backend API**  
-   - From `backend/`, start the Flask + Socket.IO server (e.g., `python app.py`).  
+## 🚀 Getting Started
 
-3. **Run frontend dashboard**  
-   - From `frontend/`, install Node dependencies (`npm install`) and start the dev server (`npm run dev`).  
+### Prerequisites
 
-4. **Run AI station**  
-   - From project root or `ai/`, run the main AI script (e.g., `python ai/main_ai.py`).  
-   - Open the dashboard in a browser to monitor live and historical safety checks.
+- Python 3.10+ with pip
+- Node.js 18+ with npm
+- A camera source (webcam, USB mobile via DroidCam/Iriun, or WiFi IP camera)
 
-This README describes the project as it exists in the repository at this stage, without altering any of the application code.
+### 1. Clone the Repository
+
+```bash
+git clone https://github.com/SUJALVAIDYA05/Industriguard-AI.git
+cd Industriguard-AI
+```
+
+### 2. Set Up Python Environment
+
+```bash
+python -m venv venv
+venv\Scripts\activate        # Windows
+# source venv/bin/activate   # macOS/Linux
+
+pip install -r requirements.txt
+```
+
+### 3. Start the Backend
+
+```bash
+cd backend
+python app.py
+```
+
+The backend starts on `http://localhost:5000`. On first run it will create the SQLite database at `backend/instance/industriguard.db`.
+
+### 4. Start the Frontend
+
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+The dashboard opens at `http://localhost:5173`.
+
+### 5. Run the AI Station
+
+```bash
+cd ai
+python main_ai.py
+```
+
+> **Tip:** Edit `ai/config.py` to switch camera mode (`webcam`, `usb_mobile`, `wifi`, `video`) and adjust model/performance settings.
+
+---
+
+## ⚙️ Configuration (`ai/config.py`)
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| `CAMERA_MODE` | `"usb_mobile"` | Camera source: `webcam`, `usb_mobile`, `usb_tether`, `wifi`, `video` |
+| `USB_CAMERA_INDEX` | `1` | Device index for USB cameras (0 = laptop, 1 = external) |
+| `MODEL_PATH` | `"ppe_model_v8.pt"` | Path to the trained YOLOv8 weights |
+| `USE_BYTE_TRACK` | `True` | Enable multi-person tracking via ByteTrack |
+| `INFERENCE_EVERY_N_FRAMES` | `3` | Run YOLO every N frames (higher = faster FPS) |
+| `INFERENCE_IMG_SIZE` | `480` | Input resolution for inference (lower = faster) |
+| `PPE_FRAMES_NEEDED` | `10` | Frames to collect before making a final PPE decision |
+| `RESULT_DISPLAY_SECONDS` | `5` | Seconds to show the result before resetting |
+| `BACKEND_URL` | `"http://localhost:5000"` | Backend API URL |
+
+---
+
+## 📊 API Endpoints
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `POST` | `/api/report` | Receive a check result from the AI station |
+| `GET` | `/api/stats` | Dashboard summary stats (today's checks, ready %, PPE violations) |
+| `GET` | `/api/checks?limit=N` | Recent check history |
+| `GET` | `/api/employees/status` | Latest status for all employees |
+| `GET` | `/api/employees/<id>` | Single employee status + history |
+| `GET` | `/api/trend` | 24-hour hourly trend data |
+| `GET` | `/api/departments` | Department-wise compliance breakdown |
+| `GET` | `/api/health` | Service health check |
+
+**WebSocket Event:** `check_update` — Emitted on every new check result for real-time dashboard updates.
+
+---
+
+## 🔍 How It Works
+
+1. **Scan** — A worker holds their QR ID card in front of the camera.
+2. **Identify** — The QR scanner decodes the employee ID and looks it up in `employees.json`.
+3. **Countdown** — A 5-second preparation timer gives the worker time to stand in position.
+4. **Detect** — The YOLOv8 model runs across 10 frames, detecting all 5 PPE items per person.
+5. **Decide** — Majority voting across frames determines final compliance. All 5 items present → **READY**, any missing → **NOT READY**.
+6. **Report** — Results are saved to Excel, sent to the backend API, and broadcast via WebSocket to the live dashboard.
+7. **Display** — The camera overlay shows a detailed PPE table, and the frontend dashboard updates in real-time with the employee's safety status and percentage.
+
+---
+
+## 🛡️ Safety Percentage Calculation
+
+The safety percentage is calculated as:
+
+$$\text{Safety \%} = \frac{\text{PPE items detected}}{5} \times 100$$
+
+| Items Detected | Safety % |
+|---------------|----------|
+| 5/5 (all PPE) | 100% ✅ READY |
+| 4/5 | 80% ❌ NOT READY |
+| 3/5 | 60% ❌ NOT READY |
+| 2/5 | 40% ❌ NOT READY |
+| 1/5 | 20% ❌ NOT READY |
+| 0/5 | 0% ❌ NOT READY |
+
+> Only **100% compliance** (all 5 items) grants READY status.
+
+---
+
+## 📝 Current Status
+
+### ✅ Implemented
+- Full 5-item PPE detection pipeline (helmet, vest, gloves, goggles, boots)
+- Multi-person ByteTrack tracking with QR-to-person association
+- State machine workflow: SCANNING → COUNTDOWN → CHECKING → DISPLAYING
+- Modern OpenCV overlay with glassmorphism and TrueType font rendering
+- Flask backend with SQLite persistence, REST API, and WebSocket events
+- React dashboard with stat cards, employee table, trend/department charts, check history, and live alerts
+- Client-side and server-side Excel report generation
+- Configurable camera modes (USB, WiFi, webcam, video file)
+
+### 🔮 Planned / Future Improvements
+- Multi-camera support with dedicated station IDs
+- Authentication and role-based access control
+- Docker containerization and CI/CD pipeline
+- Automated test suite
+- Production deployment hardening (monitoring, error recovery)
+- PPE model fine-tuning for improved accuracy
+
+---
+
+## 📄 License
+
+This project is for educational and demonstration purposes.
